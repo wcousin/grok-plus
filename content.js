@@ -316,13 +316,18 @@ function injectGrokPlusIcon() {
       icon.style.width = '32px';
       icon.style.height = '32px';
       icon.style.filter = 'brightness(0) invert(1)';
+      icon.style.pointerEvents = 'none'; // Prevent icon from capturing clicks
       iconContainer.appendChild(icon);
 
       // Add to body
       document.body.appendChild(iconContainer);
 
       console.log('Grok Plus: Icon injected successfully!');
-      iconContainer.addEventListener('click', showModal);
+      iconContainer.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        showModal();
+      });
     }
   }, 1000); // Check every second
 
@@ -340,10 +345,13 @@ function showModal() {
   if (!modal) {
     modal = createModal();
     document.body.appendChild(modal);
-    setupModalHandlers(modal);
-    setupCategoryFormHandlers(modal);
-    setupPromptFormHandlers(modal);
-    loadCategories();
+    // Ensure DOM is updated before setting up handlers
+    requestAnimationFrame(() => {
+      setupModalHandlers(modal);
+      setupPromptFormHandlers(modal);
+      loadCategories();
+      // Only set up category form handlers when showing the category form
+    });
   }
   loadPrompts();
   modal.classList.add('show');
@@ -438,41 +446,77 @@ function setupModalHandlers(modal) {
 // Show add category form
 function showAddCategoryForm(isEditing = false, categoryToEdit = null) {
   const categoryModal = document.querySelector('#gp-add-category-modal');
+  if (!categoryModal) {
+    console.error('Category modal not found');
+    return;
+  }
   categoryModal.classList.add('show');
-  setupCategoryFormHandlers(categoryModal, isEditing, categoryToEdit);
+  // Wait for DOM update before setting up handlers
+  requestAnimationFrame(() => {
+    setupCategoryFormHandlers(categoryModal, isEditing, categoryToEdit);
+  });
 }
 
 // Setup category form handlers
 function setupCategoryFormHandlers(modal, isEditing = false, categoryToEdit = null) {
+  if (!modal) {
+    console.error('Modal not found in setupCategoryFormHandlers');
+    return;
+  }
+
+  // Query all necessary elements
   const closeButton = modal.querySelector('#gp-close-category-modal');
   const cancelButton = modal.querySelector('#gp-cancel-category');
   const categoryForm = modal.querySelector('#gp-add-category-form');
   const colorOptions = modal.querySelectorAll('.gp-color-option');
-  const submitButton = modal.querySelector('#gp-add-category-submit');
+  const submitButton = categoryForm ? categoryForm.querySelector('button[type="submit"]') : null;
 
+  // Validate required elements
+  if (!categoryForm || !submitButton) {
+    console.error('Required elements not found in category form:', {
+      form: !!categoryForm,
+      submit: !!submitButton
+    });
+    return;
+  }
+
+  // Set up close and cancel button handlers
   const closeForm = () => {
-    modal.classList.remove('show');
+    modal.style.display = 'none';
     categoryForm.reset();
+    modal.classList.remove('show');
   };
 
   closeButton.addEventListener('click', (e) => {
-    e.stopPropagation();
-    closeForm();
-  });
-  cancelButton.addEventListener('click', (e) => {
+    e.preventDefault();
     e.stopPropagation();
     closeForm();
   });
 
+  cancelButton.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    closeForm();
+  });
+
+  // Set up color picker functionality
   colorOptions.forEach(option => {
-    option.addEventListener('click', () => {
+    option.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
       colorOptions.forEach(opt => opt.classList.remove('selected'));
       option.classList.add('selected');
     });
   });
 
+  // Select the first color option by default if none is selected
+  if (!modal.querySelector('.gp-color-option.selected') && colorOptions.length > 0) {
+    colorOptions[0].classList.add('selected');
+  }
+
   if (isEditing && categoryToEdit) {
-    modal.querySelector('#category-name').value = categoryToEdit.name;
+    const nameInput = modal.querySelector('#category-name');
+    if (nameInput) nameInput.value = categoryToEdit.name;
     const colorOption = modal.querySelector(`[data-color="${categoryToEdit.color}"]`);
     if (colorOption) {
       colorOptions.forEach(opt => opt.classList.remove('selected'));
@@ -483,13 +527,31 @@ function setupCategoryFormHandlers(modal, isEditing = false, categoryToEdit = nu
     submitButton.textContent = 'Add Category';
   }
 
-  categoryForm.addEventListener('submit', (e) => {
+  // Remove any existing submit handler
+  const newForm = categoryForm.cloneNode(true);
+  categoryForm.parentNode.replaceChild(newForm, categoryForm);
+
+  // Add new submit handler
+  newForm.addEventListener('submit', (e) => {
     e.preventDefault();
     e.stopPropagation();
-    const name = modal.querySelector('#category-name').value;
-    const color = modal.querySelector('.gp-color-option.selected').dataset.color;
+    const nameInput = modal.querySelector('#category-name');
+    const selectedColor = modal.querySelector('.gp-color-option.selected');
+    
+    if (!nameInput || !selectedColor) {
+      console.error('Required form elements not found');
+      return;
+    }
 
-    console.log('Saving category with name:', name);
+    const name = nameInput.value.trim();
+    const color = selectedColor.dataset.color;
+
+    if (!name) {
+      console.error('Category name is required');
+      return;
+    }
+
+    console.log('Saving category:', { name, color });
 
     if (isEditing && categoryToEdit) {
       updateCategory(categoryToEdit.name, { name, color });
@@ -505,8 +567,17 @@ function saveCategory(category) {
   chrome.storage.local.get(['grokPlus'], (result) => {
     const grokPlus = result.grokPlus || { categories: [], prompts: [] };
     if (!grokPlus.categories) grokPlus.categories = [];
+
+    // Check if category with same name already exists
+    const existingIndex = grokPlus.categories.findIndex(c => c.name === category.name);
+    if (existingIndex !== -1) {
+      console.error('Category with this name already exists');
+      return;
+    }
+
     grokPlus.categories.push(category);
     chrome.storage.local.set({ grokPlus }, () => {
+      console.log('Category saved successfully:', category);
       loadCategories();
     });
   });
@@ -515,18 +586,36 @@ function saveCategory(category) {
 function updateCategory(oldName, newCategory) {
   chrome.storage.local.get(['grokPlus'], (result) => {
     const grokPlus = result.grokPlus || { categories: [], prompts: [] };
+    
+    // Check if new name already exists (unless it's the same as old name)
+    if (newCategory.name !== oldName) {
+      const existingCategory = grokPlus.categories.find(c => c.name === newCategory.name);
+      if (existingCategory) {
+        console.error('Category with this name already exists');
+        return;
+      }
+    }
+
     const categoryIndex = grokPlus.categories.findIndex(c => c.name === oldName);
     if (categoryIndex !== -1) {
       grokPlus.categories[categoryIndex] = newCategory;
-      grokPlus.prompts.forEach(prompt => {
-        if (prompt.category === oldName) {
-          prompt.category = newCategory.name;
-        }
-      });
+      
+      // Update category name in all prompts
+      if (newCategory.name !== oldName) {
+        grokPlus.prompts.forEach(prompt => {
+          if (prompt.category === oldName) {
+            prompt.category = newCategory.name;
+          }
+        });
+      }
+
       chrome.storage.local.set({ grokPlus }, () => {
+        console.log('Category updated successfully:', newCategory);
         loadCategories();
         loadPrompts();
       });
+    } else {
+      console.error('Category not found:', oldName);
     }
   });
 }
@@ -567,7 +656,7 @@ function loadCategories() {
           </div>
           <div class="gp-more-menu">
             <button class="gp-button gp-more-button">
-              <img src="${chrome.runtime.getURL('assets/more_horiz.png')}" style="width: 24px; height: 24px; vertical-align: middle;">
+              <img src="${chrome.runtime.getURL('assets/edit_square.png')}" style="width: 24px; height: 24px; vertical-align: middle;">
             </button>
             <div class="gp-more-menu-content" id="gp-category-menu-${index}">
               <div class="gp-menu-item" data-action="edit">
