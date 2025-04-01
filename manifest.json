@@ -1,0 +1,25 @@
+{
+  "manifest_version": 3,
+  "name": "Grok Plus",
+  "version": "0.1.0",
+  "description": "Enhance your Grok experience with custom prompts and categories",
+  "permissions": ["storage"],
+  "host_permissions": ["https://grok.com/*"],
+  "content_scripts": [{
+    "matches": ["https://grok.com/*"],
+    "js": ["content.js"],
+    "css": ["styles.css"]
+  }],
+  "icons": {
+    "16": "icon16.png",
+    "48": "icon48.png",
+    "128": "icon128.png"
+  },
+  "web_accessible_resources": [{
+    "resources": [
+      "icon48.png",
+      "assets/*.png"
+    ],
+    "matches": ["https://grok.com/*"]
+  }]
+}
