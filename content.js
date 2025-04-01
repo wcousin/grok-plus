@@ -184,10 +184,14 @@ function createModal() {
       <div class="gp-modal" id="gp-add-category-modal">
         <div class="gp-modal-content">
           <div class="gp-modal-header">
-            <h2>Add Category</h2>
-            <button class="gp-button" id="gp-close-category-modal">
-              <img src="${chrome.runtime.getURL('assets/close.png')}" style="width: 24px; height: 24px; vertical-align: middle;">
-            </button>
+            <div class="gp-modal-header-left">
+              <h2>Add Category</h2>
+            </div>
+            <div class="gp-modal-header-right">
+              <button class="gp-button" id="gp-close-category-modal">
+                <img src="${chrome.runtime.getURL('assets/close.png')}" style="width: 24px; height: 24px; vertical-align: middle;">
+              </button>
+            </div>
           </div>
           <form id="gp-add-category-form">
             <div class="gp-form-group">
@@ -432,25 +436,33 @@ function setupModalHandlers(modal) {
 }
 
 // Show add category form
-function showAddCategoryForm() {
+function showAddCategoryForm(isEditing = false, categoryToEdit = null) {
   const categoryModal = document.querySelector('#gp-add-category-modal');
   categoryModal.classList.add('show');
-  setupCategoryFormHandlers(categoryModal);
+  setupCategoryFormHandlers(categoryModal, isEditing, categoryToEdit);
 }
 
 // Setup category form handlers
-function setupCategoryFormHandlers(modal) {
+function setupCategoryFormHandlers(modal, isEditing = false, categoryToEdit = null) {
   const closeButton = modal.querySelector('#gp-close-category-modal');
   const cancelButton = modal.querySelector('#gp-cancel-category');
   const categoryForm = modal.querySelector('#gp-add-category-form');
   const colorOptions = modal.querySelectorAll('.gp-color-option');
+  const submitButton = modal.querySelector('#gp-add-category-submit');
 
   const closeForm = () => {
     modal.classList.remove('show');
+    categoryForm.reset();
   };
 
-  closeButton.addEventListener('click', closeForm);
-  cancelButton.addEventListener('click', closeForm);
+  closeButton.addEventListener('click', (e) => {
+    e.stopPropagation();
+    closeForm();
+  });
+  cancelButton.addEventListener('click', (e) => {
+    e.stopPropagation();
+    closeForm();
+  });
 
   colorOptions.forEach(option => {
     option.addEventListener('click', () => {
@@ -459,14 +471,32 @@ function setupCategoryFormHandlers(modal) {
     });
   });
 
+  if (isEditing && categoryToEdit) {
+    modal.querySelector('#category-name').value = categoryToEdit.name;
+    const colorOption = modal.querySelector(`[data-color="${categoryToEdit.color}"]`);
+    if (colorOption) {
+      colorOptions.forEach(opt => opt.classList.remove('selected'));
+      colorOption.classList.add('selected');
+    }
+    submitButton.textContent = 'Update';
+  } else {
+    submitButton.textContent = 'Add Category';
+  }
+
   categoryForm.addEventListener('submit', (e) => {
     e.preventDefault();
+    e.stopPropagation();
     const name = modal.querySelector('#category-name').value;
     const color = modal.querySelector('.gp-color-option.selected').dataset.color;
 
-    saveCategory({ name, color });
+    console.log('Saving category with name:', name);
+
+    if (isEditing && categoryToEdit) {
+      updateCategory(categoryToEdit.name, { name, color });
+    } else {
+      saveCategory({ name, color });
+    }
     closeForm();
-    categoryForm.reset();
   });
 }
 
@@ -482,37 +512,121 @@ function saveCategory(category) {
   });
 }
 
+function updateCategory(oldName, newCategory) {
+  chrome.storage.local.get(['grokPlus'], (result) => {
+    const grokPlus = result.grokPlus || { categories: [], prompts: [] };
+    const categoryIndex = grokPlus.categories.findIndex(c => c.name === oldName);
+    if (categoryIndex !== -1) {
+      grokPlus.categories[categoryIndex] = newCategory;
+      grokPlus.prompts.forEach(prompt => {
+        if (prompt.category === oldName) {
+          prompt.category = newCategory.name;
+        }
+      });
+      chrome.storage.local.set({ grokPlus }, () => {
+        loadCategories();
+        loadPrompts();
+      });
+    }
+  });
+}
+
+function deleteCategory(categoryName) {
+  chrome.storage.local.get(['grokPlus'], (result) => {
+    const grokPlus = result.grokPlus || { categories: [], prompts: [] };
+    grokPlus.categories = grokPlus.categories.filter(c => c.name !== categoryName);
+    grokPlus.prompts.forEach(prompt => {
+      if (prompt.category === categoryName) {
+        prompt.category = 'uncategorized';
+      }
+    });
+    chrome.storage.local.set({ grokPlus }, () => {
+      loadCategories();
+      loadPrompts();
+    });
+  });
+}
+
 // Load categories
 function loadCategories() {
   chrome.storage.local.get(['grokPlus'], (result) => {
     const grokPlus = result.grokPlus || { categories: [] };
     const categoriesList = document.querySelector('#gp-categories-list');
-    const categorySelect = document.querySelector('#prompt-category');
+    const categorySelects = document.querySelectorAll('[id$="-prompt-category"]');
     
     if (categoriesList) {
       categoriesList.innerHTML = '';
-      grokPlus.categories.forEach(category => {
+      grokPlus.categories.forEach((category, index) => {
+        console.log('Category:', category);
         const categoryElement = document.createElement('div');
         categoryElement.className = 'gp-category-item';
         categoryElement.innerHTML = `
-          <span class="gp-dot" style="background: var(--gp-color-${category.color})"></span>
-          <span>${category.name}</span>
+          <div class="gp-category-content">
+            <span class="gp-dot" style="background: var(--gp-color-${category.color})"></span>
+            <span>${category.name}</span>
+          </div>
+          <div class="gp-more-menu">
+            <button class="gp-button gp-more-button">
+              <img src="${chrome.runtime.getURL('assets/more_horiz.png')}" style="width: 24px; height: 24px; vertical-align: middle;">
+            </button>
+            <div class="gp-more-menu-content" id="gp-category-menu-${index}">
+              <div class="gp-menu-item" data-action="edit">
+                <img src="${chrome.runtime.getURL('assets/edit_square.png')}" style="width: 24px; height: 24px; vertical-align: middle;">
+                Edit
+              </div>
+              <div class="gp-menu-item delete" data-action="delete">
+                <img src="${chrome.runtime.getURL('assets/close.png')}" style="width: 24px; height: 24px; vertical-align: middle;">
+                Delete
+              </div>
+            </div>
+          </div>
         `;
+
+        const categoryContent = categoryElement.querySelector('.gp-category-content');
+        categoryContent.addEventListener('click', () => {
+          loadPrompts('', category.name);
+        });
+
+        const moreButton = categoryElement.querySelector('.gp-more-button');
+        const moreMenu = categoryElement.querySelector('.gp-more-menu-content');
+
+        moreButton.addEventListener('click', (e) => {
+          e.stopPropagation();
+          moreMenu.classList.toggle('show');
+        });
+
+        const menuItems = categoryElement.querySelectorAll('.gp-menu-item');
+        menuItems.forEach(item => {
+          item.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const action = item.dataset.action;
+            switch (action) {
+              case 'edit':
+                showAddCategoryForm(true, category);
+                break;
+              case 'delete':
+                deleteCategory(category.name);
+                break;
+            }
+            moreMenu.classList.remove('show');
+          });
+        });
+
         categoriesList.appendChild(categoryElement);
       });
     }
 
-    if (categorySelect) {
-      const currentValue = categorySelect.value;
-      categorySelect.innerHTML = '<option value="uncategorized">Uncategorized</option>';
+    categorySelects.forEach(select => {
+      const currentValue = select.value;
+      select.innerHTML = '<option value="uncategorized">Uncategorized</option>';
       grokPlus.categories.forEach(category => {
         const option = document.createElement('option');
         option.value = category.name;
         option.textContent = category.name;
-        categorySelect.appendChild(option);
+        select.appendChild(option);
       });
-      categorySelect.value = currentValue;
-    }
+      select.value = currentValue || 'uncategorized';
+    });
   });
 }
 
@@ -595,6 +709,7 @@ function savePrompt(prompt, callback) {
       prompt.category = 'uncategorized';
     }
 
+    // Set timestamps if not present
     if (!prompt.lastViewed) {
       prompt.lastViewed = new Date().toISOString();
     }
@@ -602,7 +717,19 @@ function savePrompt(prompt, callback) {
       prompt.createdDate = new Date().toISOString();
     }
 
-    grokPlus.prompts.push(prompt);
+    // Check if prompt already exists
+    const existingPromptIndex = grokPlus.prompts.findIndex(p => 
+      p.createdDate === prompt.createdDate
+    );
+
+    if (existingPromptIndex !== -1) {
+      // Update existing prompt
+      grokPlus.prompts[existingPromptIndex] = prompt;
+    } else {
+      // Add new prompt
+      grokPlus.prompts.push(prompt);
+    }
+
     chrome.storage.local.set({ grokPlus }, () => {
       console.log('Grok Plus: Prompt saved:', prompt);
       loadPrompts();
@@ -612,7 +739,7 @@ function savePrompt(prompt, callback) {
 }
 
 // Load prompts
-function loadPrompts(searchTerm = '') {
+function loadPrompts(searchTerm = '', category = null) {
   chrome.storage.local.get(['grokPlus'], (result) => {
     const grokPlus = result.grokPlus || { prompts: [] };
     const promptsGrid = document.querySelector('#gp-prompts-grid');
@@ -621,11 +748,17 @@ function loadPrompts(searchTerm = '') {
 
     if (promptsGrid) {
       promptsGrid.innerHTML = '';
-      const filteredPrompts = searchTerm
-        ? grokPlus.prompts.filter(p =>
-            p.name.toLowerCase().includes(searchTerm) ||
-            p.content.toLowerCase().includes(searchTerm))
-        : grokPlus.prompts;
+      let filteredPrompts = grokPlus.prompts;
+      
+      if (searchTerm) {
+        filteredPrompts = filteredPrompts.filter(p =>
+          p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          p.content.toLowerCase().includes(searchTerm.toLowerCase()));
+      }
+      
+      if (category) {
+        filteredPrompts = filteredPrompts.filter(p => p.category === category);
+      }
       filteredPrompts.forEach((prompt, index) => {
         const promptElement = createPromptElement(prompt, index);
         promptsGrid.appendChild(promptElement);
@@ -681,17 +814,14 @@ function showViewPromptModal(prompt) {
     form.reset();
   };
 
-  closeButton.addEventListener('click', (e) => {
+  const handleClose = (e) => {
     e.preventDefault();
     e.stopPropagation();
     closeModal();
-  });
+  };
 
-  cancelButton.addEventListener('click', (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    closeModal();
-  });
+  closeButton.addEventListener('click', handleClose);
+  cancelButton.addEventListener('click', handleClose);
 
   modal.addEventListener('click', (e) => {
     if (e.target === modal) {
@@ -705,13 +835,14 @@ function showViewPromptModal(prompt) {
 
     const updatedPrompt = {
       ...prompt,
-      name: titleInput.value,
-      content: contentInput.value,
+      name: titleInput.value.trim(),
+      content: contentInput.value.trim(),
       category: categorySelect.value,
       isFavorite: favoriteCheckbox.checked,
-      lastViewed: new Date().toISOString()
+      lastModified: new Date().toISOString()
     };
 
+    // Use createdDate as unique identifier for updating
     savePrompt(updatedPrompt, () => {
       closeModal();
       loadPrompts();
@@ -723,11 +854,14 @@ function showViewPromptModal(prompt) {
 function createPromptElement(prompt, index) {
   const element = document.createElement('div');
   element.className = 'gp-prompt-item';
+  
+  console.log('Star icon source:', prompt.isFavorite ? 'star_yellow.png' : 'star.png');
+  
   element.innerHTML = `
     <div class="gp-prompt-header">
       <h3>${prompt.name}</h3>
       <button class="gp-button gp-star-button ${prompt.isFavorite ? 'active' : ''}">
-        <img src="${chrome.runtime.getURL(`assets/${prompt.isFavorite ? 'star_yellow.png' : 'star.png'}`)}" style="width: 24px; height: 24px; vertical-align: middle;">
+        <img src="${chrome.runtime.getURL(`assets/${prompt.isFavorite ? 'star_yellow.png' : 'star.png'}`)}" class="star-icon" style="width: 24px; height: 24px; vertical-align: middle;">
       </button>
     </div>
     <p>${truncateText(prompt.content, 90)}</p>
@@ -763,6 +897,11 @@ function createPromptElement(prompt, index) {
   });
 
   const starButton = element.querySelector('.gp-star-button');
+  const starIcon = starButton.querySelector('img');
+  starIcon.addEventListener('load', () => {
+    console.log('Star icon dimensions:', starIcon.naturalWidth, starIcon.naturalHeight);
+  });
+
   starButton.addEventListener('click', (e) => {
     e.stopPropagation();
     chrome.storage.local.get(['grokPlus'], (result) => {
