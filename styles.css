@@ -384,12 +384,19 @@ body {
 .gp-category-item {
     display: flex;
     align-items: center;
-    gap: var(--gp-spacing-sm);
-    padding: var(--gp-spacing-sm) var(--gp-spacing-md);
+    justify-content: space-between;
+    padding: var(--gp-spacing-sm) var(--gp-spacing-sm);
     color: var(--gp-color-text-secondary);
     cursor: pointer;
     border-radius: var(--gp-radius-md);
     transition: var(--gp-transition-fast);
+}
+
+.gp-category-content {
+    display: flex;
+    align-items: center;
+    gap: var(--gp-spacing-sm);
+    flex: 1;
 }
 
 .gp-category-item:hover {
@@ -398,7 +405,43 @@ body {
 }
 
 .gp-dot {
-    width: 8px;
+    width: 8px !important;
+    height: 8px !important;
+    border-radius: 50% !important;
+    margin-right: var(--gp-spacing-sm) !important;
+    display: inline-block !important;
+    flex-shrink: 0 !important;
+    min-width: 8px;
+    min-height: 8px;
+}
+
+.gp-color-option {
+    width: 32px;
+    height: 32px;
+    border-radius: var(--gp-radius-full);
+    cursor: pointer;
+    border: 2px solid transparent;
+    transition: all var(--gp-transition-fast);
+}
+
+.gp-color-option:hover {
+    transform: scale(1.1);
+    box-shadow: 0 0 0 2px var(--gp-color-text-secondary);
+}
+
+.gp-color-option.selected {
+    border-color: var(--gp-color-text-primary);
+    transform: scale(1.1);
+    box-shadow: 0 0 0 2px var(--gp-color-text-primary);
+}
+
+.gp-color-picker {
+    display: flex;
+    gap: var(--gp-spacing-sm);
+    margin: var(--gp-spacing-md) 0;
+}
+
+.gp-dot {
     height: 8px;
     border-radius: var(--gp-radius-full);
     flex-shrink: 0;
@@ -499,6 +542,32 @@ body {
 /* More Menu */
 .gp-more-menu {
     position: relative;
+    opacity: 0;
+    transition: opacity var(--gp-transition-fast);
+}
+
+.gp-category-item:hover .gp-more-menu {
+    opacity: 1;
+}
+
+.gp-category-item:hover .gp-more-menu .gp-more-button:hover {
+    background: var(--gp-color-surface-highest);
+}
+
+.gp-more-button {
+    padding: var(--gp-spacing-xs);
+    border-radius: var(--gp-radius-sm);
+    transition: background-color var(--gp-transition-fast);
+}
+
+.gp-more-button:hover {
+    background-color: var(--gp-color-surface-highest);
+}
+
+.gp-more-button img {
+    width: 18px !important;
+    height: 18px !important;
+    vertical-align: middle;
 }
 
 .gp-more-menu-content {
@@ -532,6 +601,11 @@ body {
 .gp-menu-item:hover {
     background: var(--gp-color-surface-highest);
     color: var(--gp-color-text-primary);
+}
+
+.gp-menu-item img {
+    width: 18px !important;
+    height: 18px !important;
 }
 
 .gp-menu-item.delete {
