@@ -66,3 +66,4 @@ MIT License - feel free to use and modify as needed.
 ## Version History
 
 See [CHANGELOG.md](CHANGELOG.md) for version history.
+
