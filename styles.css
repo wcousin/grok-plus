@@ -98,7 +98,8 @@ body {
     border-bottom: 1px solid var(--gp-color-surface-highest);
 }
 
-#gp-add-prompt-form {
+#gp-add-prompt-form,
+#gp-add-category-form {
     padding: var(--gp-spacing-lg);
 }
 
@@ -149,35 +150,40 @@ body {
 }
 
 #gp-view-prompt-modal,
-#gp-add-prompt-modal {
+#gp-add-prompt-modal,
+#gp-add-category-modal {
     display: none;
 }
 
 #gp-view-prompt-modal.show,
-#gp-add-prompt-modal.show {
+#gp-add-prompt-modal.show,
+#gp-add-category-modal.show {
     display: flex;
 }
 
 #gp-view-prompt-modal {
-    display: block;
+    display: none;
 }
 
-#gp-view-prompt-modal .gp-modal-content {
-    position: fixed;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
+#gp-view-prompt-modal.show {
+    display: flex;
+}
+
+#gp-view-prompt-modal .gp-modal-content,
+#gp-add-category-modal .gp-modal-content {
+    background: var(--gp-color-background);
+    border-radius: var(--gp-radius-lg);
     width: 90%;
     max-width: 600px;
     height: auto;
     max-height: 90vh;
-    background-color: var(--gp-color-surface);
-    border-radius: var(--gp-radius-lg);
-    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
-    z-index: 1001;
+    position: relative;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
 }
 
-#gp-view-prompt-modal .gp-modal-body {
+#gp-view-prompt-form {
     padding: var(--gp-spacing-lg);
 }
 
@@ -185,6 +191,9 @@ body {
     white-space: pre-wrap;
     margin-bottom: var(--gp-spacing-lg);
     line-height: 1.5;
+    width: 100%;
+    min-height: 150px;
+    resize: vertical;
 }
 
 .gp-prompt-metadata {
@@ -260,6 +269,27 @@ body {
     color: var(--gp-color-text-secondary);
 }
 
+/* Color Picker */
+.gp-color-picker {
+    display: flex;
+    gap: var(--gp-spacing-sm);
+    margin-top: var(--gp-spacing-sm);
+    flex-wrap: wrap;
+}
+
+.gp-color-option {
+    width: 32px;
+    height: 32px;
+    border-radius: var(--gp-radius-full);
+    cursor: pointer;
+    transition: var(--gp-transition-fast);
+    border: 2px solid transparent;
+}
+
+.gp-color-option.selected {
+    border-color: var(--gp-color-text-primary);
+}
+
 /* Main Container */
 .gp-main-container {
     flex: 1;
@@ -291,6 +321,23 @@ body {
 .gp-nav-item.active {
     background: var(--gp-color-surface-highest);
     color: var(--gp-color-text-primary);
+}
+
+.gp-category-item span {
+    color: var(--gp-color-text-secondary);
+    display: inline;
+    margin-left: var(--gp-spacing-sm);
+}
+
+.gp-star-button img {
+    max-width: none;
+    width: 24px !important;
+    height: 24px !important;
+    object-fit: contain;
+    object-position: center;
+    padding: 0;
+    margin: 0;
+    display: block;
 }
 
 .gp-nav-item .gp-icon {
@@ -514,7 +561,7 @@ body {
 
 .gp-star-button {
     color: var(--gp-color-text-secondary);
-    transition: var(--gp-transition-fast);
+    transition: var(--gp-transition-normal);
     padding: var(--gp-spacing-xs);
     border: none;
     background: none;
