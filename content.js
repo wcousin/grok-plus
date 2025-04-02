@@ -752,6 +752,20 @@ function loadCategories() {
 
         const categoryContent = categoryElement.querySelector('.gp-category-content');
         categoryContent.addEventListener('click', () => {
+          // Switch to Prompts view
+          const navItems = document.querySelectorAll('.gp-nav-item');
+          const promptsTab = Array.from(navItems).find(item => item.dataset.view === 'prompts');
+          if (promptsTab) {
+            navItems.forEach(i => i.classList.remove('active'));
+            promptsTab.classList.add('active');
+            
+            // Show prompts view
+            document.querySelectorAll('.gp-view-content').forEach(content => {
+              content.style.display = content.id === 'gp-prompts-view' ? 'block' : 'none';
+            });
+          }
+          
+          // Load filtered prompts
           loadPrompts('', category.name);
         });
 
