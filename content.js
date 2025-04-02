@@ -51,13 +51,18 @@ function createModal() {
             <input type="text" id="view-prompt-title" class="gp-form-input" required>
           </div>
           <div class="gp-form-group">
-            <label class="gp-form-label" for="view-prompt-content">Prompt</label>
+            <div class="gp-form-label-row">
+              <label class="gp-form-label" for="view-prompt-content">Prompt</label>
+              <button type="button" class="gp-button" id="gp-copy-prompt-content">
+                <img src="${chrome.runtime.getURL('assets/content_copy.png')}" style="width: 20px; height: 20px; vertical-align: middle;">
+              </button>
+            </div>
             <textarea id="view-prompt-content" class="gp-form-textarea" required></textarea>
           </div>
           <div class="gp-form-group">
             <label class="gp-form-label" for="view-prompt-category">Category</label>
             <select id="view-prompt-category" class="gp-form-select">
-              <option value="uncategorized">Uncategorized</option>
+              <option value="uncategorized">--</option>
             </select>
           </div>
           <div class="gp-form-group">
@@ -165,6 +170,20 @@ function createModal() {
                 <h1>Recent Prompts</h1>
                 <p>Your recently used prompts</p>
               </div>
+              <div class="gp-content-header-right">
+                <div class="gp-view-controls">
+                  <button class="gp-view-btn active" data-view="grid">
+                    <img src="${chrome.runtime.getURL('assets/grid_view.png')}" style="width: 24px; height: 24px; vertical-align: middle;">
+                  </button>
+                  <button class="gp-view-btn" data-view="list">
+                    <img src="${chrome.runtime.getURL('assets/view_list.png')}" style="width: 24px; height: 24px; vertical-align: middle;">
+                  </button>
+                </div>
+                <button class="gp-btn gp-btn-primary" id="gp-add-prompt">
+                  <img src="${chrome.runtime.getURL('assets/add.png')}" style="width: 24px; height: 24px; vertical-align: middle;">
+                  Add Prompt
+                </button>
+              </div>
             </div>
             <div class="gp-folder-grid" id="gp-recent-grid"></div>
           </div>
@@ -173,6 +192,20 @@ function createModal() {
               <div>
                 <h1>Favorites</h1>
                 <p>Your favorite prompts</p>
+              </div>
+              <div class="gp-content-header-right">
+                <div class="gp-view-controls">
+                  <button class="gp-view-btn active" data-view="grid">
+                    <img src="${chrome.runtime.getURL('assets/grid_view.png')}" style="width: 24px; height: 24px; vertical-align: middle;">
+                  </button>
+                  <button class="gp-view-btn" data-view="list">
+                    <img src="${chrome.runtime.getURL('assets/view_list.png')}" style="width: 24px; height: 24px; vertical-align: middle;">
+                  </button>
+                </div>
+                <button class="gp-btn gp-btn-primary" id="gp-add-prompt">
+                  <img src="${chrome.runtime.getURL('assets/add.png')}" style="width: 24px; height: 24px; vertical-align: middle;">
+                  Add Prompt
+                </button>
               </div>
             </div>
             <div class="gp-folder-grid" id="gp-favorites-grid"></div>
@@ -242,7 +275,7 @@ function createModal() {
             <div class="gp-form-group">
               <label class="gp-form-label" for="prompt-category">Category</label>
               <select id="prompt-category" class="gp-form-select">
-                <option value="uncategorized">Uncategorized</option>
+                <option value="uncategorized">--</option>
               </select>
             </div>
             <div class="gp-form-group">
@@ -427,9 +460,19 @@ function setupModalHandlers(modal) {
       modal.querySelectorAll('.gp-view-content').forEach(content => {
         content.style.display = content.id === `gp-${view}-view` ? 'block' : 'none';
       });
-      if (view === 'prompts') {
-        document.querySelector('#gp-prompts-grid').style.display = 'grid';
+      
+      // Show appropriate grid and header
+      const grid = document.querySelector(`#gp-${view}-grid`);
+      if (grid) {
+        grid.style.display = 'grid';
       }
+      
+      // Show content header for all views
+      const contentHeader = modal.querySelector('.gp-content-header-right');
+      if (contentHeader) {
+        contentHeader.style.display = 'flex';
+      }
+      
       searchInput.value = '';
       loadPrompts();
     });
@@ -450,6 +493,7 @@ function showAddCategoryForm(isEditing = false, categoryToEdit = null) {
     console.error('Category modal not found');
     return;
   }
+  categoryModal.style.display = ''; // Reset any inline display style
   categoryModal.classList.add('show');
   // Wait for DOM update before setting up handlers
   requestAnimationFrame(() => {
@@ -482,7 +526,6 @@ function setupCategoryFormHandlers(modal, isEditing = false, categoryToEdit = nu
 
   // Set up close and cancel button handlers
   const closeForm = () => {
-    modal.style.display = 'none';
     categoryForm.reset();
     modal.classList.remove('show');
   };
@@ -501,13 +544,19 @@ function setupCategoryFormHandlers(modal, isEditing = false, categoryToEdit = nu
 
   // Set up color picker functionality
   colorOptions.forEach(option => {
-    option.addEventListener('click', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      colorOptions.forEach(opt => opt.classList.remove('selected'));
-      option.classList.add('selected');
-    });
+    // Remove old listeners
+    option.removeEventListener('click', colorClickHandler);
+    
+    // Add new click listener
+    option.addEventListener('click', colorClickHandler);
   });
+
+  function colorClickHandler(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    colorOptions.forEach(opt => opt.classList.remove('selected'));
+    e.currentTarget.classList.add('selected');
+  }
 
   // Select the first color option by default if none is selected
   if (!modal.querySelector('.gp-color-option.selected') && colorOptions.length > 0) {
@@ -527,12 +576,8 @@ function setupCategoryFormHandlers(modal, isEditing = false, categoryToEdit = nu
     submitButton.textContent = 'Add Category';
   }
 
-  // Remove any existing submit handler
-  const newForm = categoryForm.cloneNode(true);
-  categoryForm.parentNode.replaceChild(newForm, categoryForm);
-
-  // Add new submit handler
-  newForm.addEventListener('submit', (e) => {
+  // Set up form submission
+  categoryForm.addEventListener('submit', (e) => {
     e.preventDefault();
     e.stopPropagation();
     const nameInput = modal.querySelector('#category-name');
@@ -643,6 +688,28 @@ function loadCategories() {
     const categoriesList = document.querySelector('#gp-categories-list');
     const categorySelects = document.querySelectorAll('[id$="-prompt-category"]');
     
+    // Update category dropdowns
+    categorySelects.forEach(select => {
+      const currentValue = select.value;
+      select.innerHTML = '<option value="uncategorized">--</option>';
+      
+      // Sort categories alphabetically
+      const sortedCategories = [...grokPlus.categories].sort((a, b) => 
+        a.name.localeCompare(b.name)
+      );
+      
+      sortedCategories.forEach(category => {
+        const option = document.createElement('option');
+        option.value = category.name;
+        option.textContent = category.name;
+        select.appendChild(option);
+      });
+      
+      // Restore previous selection or default to uncategorized
+      select.value = currentValue || 'uncategorized';
+    });
+    
+    // Update categories list in sidebar
     if (categoriesList) {
       categoriesList.innerHTML = '';
       grokPlus.categories.forEach((category, index) => {
@@ -707,7 +774,7 @@ function loadCategories() {
 
     categorySelects.forEach(select => {
       const currentValue = select.value;
-      select.innerHTML = '<option value="uncategorized">Uncategorized</option>';
+      select.innerHTML = '<option value="uncategorized">--</option>';
       grokPlus.categories.forEach(category => {
         const option = document.createElement('option');
         option.value = category.name;
@@ -722,17 +789,51 @@ function loadCategories() {
 // Show add prompt form
 function showAddPromptForm() {
   const promptModal = document.querySelector('#gp-add-prompt-modal');
+  if (!promptModal) {
+    console.error('Prompt modal not found');
+    return;
+  }
+
+  // Reset form if it exists
   const promptForm = promptModal.querySelector('#gp-add-prompt-form');
-  
+  if (promptForm) {
+    promptForm.reset();
+  }
+
   // Show form and hide grid
   promptModal.classList.add('show');
   document.querySelector('#gp-prompts-grid').style.display = 'none';
-  loadCategories();
+
+  // Load categories and update the dropdown
+  chrome.storage.local.get(['grokPlus'], (result) => {
+    const grokPlus = result.grokPlus || { categories: [] };
+    const categorySelect = promptModal.querySelector('#prompt-category');
+    if (categorySelect) {
+      categorySelect.innerHTML = '<option value="uncategorized">--</option>';
+      
+      // Sort categories alphabetically
+      const sortedCategories = [...grokPlus.categories].sort((a, b) => 
+        a.name.localeCompare(b.name)
+      );
+
+      sortedCategories.forEach(category => {
+        const option = document.createElement('option');
+        option.value = category.name;
+        option.textContent = category.name;
+        categorySelect.appendChild(option);
+      });
+    }
+  });
 }
 
 // Setup prompt form handlers
 function setupPromptFormHandlers(modal) {
-  const promptModal = modal.querySelector('#gp-add-prompt-modal');
+  const promptModal = document.querySelector('#gp-add-prompt-modal');
+  if (!promptModal) {
+    console.error('Prompt modal not found');
+    return;
+  }
+
   const promptForm = promptModal.querySelector('#gp-add-prompt-form');
   const closeButton = promptModal.querySelector('#gp-close-prompt-modal');
   const cancelButton = promptModal.querySelector('#gp-cancel-prompt');
@@ -886,6 +987,22 @@ function showViewPromptModal(prompt) {
   const favoriteCheckbox = modal.querySelector('#view-prompt-favorite');
   const closeButton = modal.querySelector('#gp-close-view-prompt-modal');
   const cancelButton = modal.querySelector('#gp-close-view-prompt');
+  const copyButton = modal.querySelector('#gp-copy-prompt-content');
+
+  // Setup copy functionality
+  copyButton.addEventListener('click', async () => {
+    const content = contentInput.value;
+    try {
+      await navigator.clipboard.writeText(content);
+      const originalImg = copyButton.querySelector('img');
+      originalImg.src = chrome.runtime.getURL('assets/check.png');
+      setTimeout(() => {
+        originalImg.src = chrome.runtime.getURL('assets/content_copy.png');
+      }, 2000);
+    } catch (err) {
+      console.error('Failed to copy text:', err);
+    }
+  });
 
   // Populate form fields
   titleInput.value = prompt.name;
@@ -948,12 +1065,12 @@ function createPromptElement(prompt, index) {
   
   element.innerHTML = `
     <div class="gp-prompt-header">
-      <h3>${prompt.name}</h3>
+      <h3>${truncateText(prompt.name, 30)}</h3>
       <button class="gp-button gp-star-button ${prompt.isFavorite ? 'active' : ''}">
         <img src="${chrome.runtime.getURL(`assets/${prompt.isFavorite ? 'star_yellow.png' : 'star.png'}`)}" class="star-icon" style="width: 24px; height: 24px; vertical-align: middle;">
       </button>
     </div>
-    <p>${truncateText(prompt.content, 90)}</p>
+    <div class="gp-prompt-content">${prompt.content}</div>
     <div class="gp-prompt-footer">
       <span class="gp-prompt-date">Created: ${new Date(prompt.createdDate).toLocaleDateString()}</span>
       <div class="gp-more-menu">
