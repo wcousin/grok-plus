@@ -83,7 +83,10 @@ function createModal() {
         <button class="gp-button gp-mobile-menu-toggle">
           <img src="${chrome.runtime.getURL('assets/grid_view.png')}" style="width: 24px; height: 24px; vertical-align: middle;">
         </button>
-        <h1 class="gp-app-title">Grok Plus</h1>
+        <h1 class="gp-app-title">
+          <img src="${chrome.runtime.getURL('assets/view_object_track_pg.png')}" style="width: 32px; height: 32px; vertical-align: middle; margin-right: var(--gp-spacing-xs);">
+          AI Prompt Manager
+        </h1>
         <div class="gp-search-section">
           <div class="gp-search-bar">
             <img src="${chrome.runtime.getURL('assets/search.png')}" style="width: 24px; height: 24px; vertical-align: middle;" class="gp-search-icon">
@@ -135,7 +138,7 @@ function createModal() {
           <div class="gp-categories">
             <div class="gp-category-title">
               <span>CATEGORIES</span>
-              <img src="${chrome.runtime.getURL('assets/add.png')}" class="gp-add-icon" id="gp-add-category" style="width: 24px; height: 24px; vertical-align: middle;">
+              <img src="${chrome.runtime.getURL('assets/add.png')}" class="gp-add-icon" id="gp-add-category" style="width: 32px; height: 32px; vertical-align: middle;">
             </div>
             <div id="gp-categories-list"></div>
           </div>
@@ -298,25 +301,34 @@ function createModal() {
 
 // Function to inject the icon
 function injectGrokPlusIcon() {
-  console.log('Grok Plus: Starting icon injection...');
+  console.log('Prompt Manager: Starting icon injection...');
 
   // Try to find the target element periodically until found
   const checkInterval = setInterval(() => {
-    // Look for the submit button or input area
-    const targetElement = document.querySelector('form button[type="submit"]') || 
-                         document.querySelector('textarea[placeholder*="message"]') ||
-                         document.querySelector('.grok-3-dropdown') || 
-                         document.querySelector('[role="combobox"]');
+    // Look for the submit button or input area across different platforms
+    const targetElement = 
+      // Grok
+      document.querySelector('.grok-3-dropdown') ||
+      document.querySelector('[role="combobox"]') ||
+      // ChatGPT
+      document.querySelector('#prompt-textarea') ||
+      document.querySelector('form div[class*="stretch"]') ||
+      // Claude
+      document.querySelector('div[class*="ProseMirror"]') ||
+      document.querySelector('.claude-input') ||
+      // Generic fallbacks
+      document.querySelector('textarea[placeholder*="message"]') ||
+      document.querySelector('form button[type="submit"]');
 
-    console.log('Grok Plus: Searching for target element...', targetElement);
+    console.log('Prompt Manager: Searching for target element...', targetElement);
 
     if (targetElement) {
       clearInterval(checkInterval);
-      console.log('Grok Plus: Target element found!');
+      console.log('Prompt Manager: Target element found!');
       
       // Check if icon already exists
       if (document.querySelector('.gp-icon')) {
-        console.log('Grok Plus: Icon already exists, skipping injection');
+        console.log('Prompt Manager: Icon already exists, skipping injection');
         return;
       }
       
@@ -325,7 +337,7 @@ function injectGrokPlusIcon() {
       iconContainer.style.position = 'fixed';
       iconContainer.style.right = '24px';
       iconContainer.style.bottom = '24px';
-      iconContainer.style.zIndex = '1000';
+      iconContainer.style.zIndex = '9999999';
       iconContainer.style.cursor = 'pointer';
       iconContainer.style.display = 'flex';
       iconContainer.style.alignItems = 'center';
@@ -355,7 +367,7 @@ function injectGrokPlusIcon() {
       // Add to body
       document.body.appendChild(iconContainer);
 
-      console.log('Grok Plus: Icon injected successfully!');
+      console.log('Prompt Manager: Icon injected successfully!');
       iconContainer.addEventListener('click', (e) => {
         e.preventDefault();
         e.stopPropagation();
@@ -367,7 +379,7 @@ function injectGrokPlusIcon() {
   // Clear interval after 30 seconds to prevent infinite checking
   setTimeout(() => {
     clearInterval(checkInterval);
-    console.log('Grok Plus: Stopped searching for target element');
+    console.log('Prompt Manager: Stopped searching for target element');
   }, 30000);
 }
 

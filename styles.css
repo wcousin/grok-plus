@@ -222,6 +222,8 @@ body {
     font-weight: 600;
     color: var(--gp-color-text-primary);
     margin-right: auto;
+    display: flex;
+    align-items: center;
 }
 
 .gp-top-nav-right {

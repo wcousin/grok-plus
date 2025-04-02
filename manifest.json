@@ -1,12 +1,20 @@
 {
   "manifest_version": 3,
-  "name": "Grok Plus",
+  "name": "AI Prompt Manager",
   "version": "0.1.0",
-  "description": "Enhance your Grok experience with custom prompts and categories",
+  "description": "Enhance your AI experience with custom prompts and categories.",
   "permissions": ["storage"],
-  "host_permissions": ["https://grok.com/*"],
+  "host_permissions": [
+    "https://grok.com/*",
+    "https://chatgpt.com/*",
+    "https://claude.ai/*"
+  ],
   "content_scripts": [{
-    "matches": ["https://grok.com/*"],
+    "matches": [
+      "https://grok.com/*",
+      "https://chatgpt.com/*",
+      "https://claude.ai/*"
+    ],
     "js": ["content.js"],
     "css": ["styles.css"]
   }],
@@ -20,6 +28,10 @@
       "icon48.png",
       "assets/*.png"
     ],
-    "matches": ["https://grok.com/*"]
+    "matches": [
+      "https://grok.com/*",
+      "https://chatgpt.com/*",
+      "https://claude.ai/*"
+    ]
   }]
 }
