@@ -101,6 +101,7 @@ body {
 #gp-add-prompt-form,
 #gp-add-category-form {
     padding: var(--gp-spacing-lg);
+    overflow-y: auto;
 }
 
 .gp-modal-header h2 {
@@ -689,6 +690,104 @@ body {
     color: var(--gp-color-text-primary);
 }
 
+/* Upgrade Modal Styles */
+.gp-upgrade-modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 10000;
+}
+
+.gp-upgrade-modal .gp-modal-content {
+    background: var(--gp-color-surface);
+    padding: var(--gp-spacing-xl);
+    border-radius: var(--gp-radius-md);
+    max-width: 800px;
+    width: 90%;
+    position: relative;
+}
+
+.gp-pricing-table {
+    display: flex;
+    gap: var(--gp-spacing-xl);
+    margin-top: var(--gp-spacing-xl);
+}
+
+.gp-plan {
+    flex: 1;
+    padding: var(--gp-spacing-xl);
+    border: 1px solid var(--gp-color-surface-highest);
+    border-radius: var(--gp-radius-md);
+    text-align: center;
+    background: var(--gp-color-surface-raised);
+}
+
+.gp-plan.gp-premium {
+    border-color: var(--gp-color-primary);
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2);
+}
+
+.gp-plan h3 {
+    margin: 0 0 var(--gp-spacing-md);
+    color: var(--gp-color-text-primary);
+}
+
+.gp-plan ul {
+    list-style: none;
+    padding: 0;
+    margin: 0 0 var(--gp-spacing-lg);
+}
+
+.gp-plan li {
+    margin: var(--gp-spacing-sm) 0;
+    color: var(--gp-color-text-secondary);
+}
+
+.gp-price {
+    font-size: var(--gp-font-size-xl);
+    font-weight: bold;
+    color: var(--gp-color-text-primary);
+    margin: var(--gp-spacing-md) 0;
+}
+
+.gp-upgrade-button {
+    background: var(--gp-color-primary);
+    color: var(--gp-color-text-primary);
+    border: none;
+    top: 3px;
+    padding: var(--gp-spacing-sm) var(--gp-spacing-lg);
+    border-radius: var(--gp-radius-sm);
+    cursor: pointer;
+    font-weight: bold;
+    transition: background var(--gp-transition-fast);
+}
+
+.gp-upgrade-button:hover {
+    background: var(--gp-color-primary-hover);
+}
+
+.gp-close-button {
+    position: absolute;
+    top: var(--gp-spacing-md);
+    right: var(--gp-spacing-md);
+    background: none;
+    border: none;
+    font-size: var(--gp-font-size-xl);
+    cursor: pointer;
+    color: var(--gp-color-text-secondary);
+}
+
+.gp-upgrade-message {
+    text-align: center;
+    color: var(--gp-color-text-secondary);
+    margin-bottom: var(--gp-spacing-lg);
+}
 /* Buttons */
 .gp-button {
     padding: var(--gp-spacing-xs);
@@ -703,6 +802,23 @@ body {
 .gp-button:hover {
     background: var(--gp-color-surface-raised);
     color: var(--gp-color-text-primary);
+}
+
+.gp-upgrade-button {
+    position: relative;
+    margin-right: var(--gp-spacing-sm);
+}
+
+.gp-upgrade-button img {
+    transition: transform var(--gp-transition-fast);
+}
+
+.gp-upgrade-button:hover {
+    background: none;
+}
+
+.gp-upgrade-button:hover img {
+    transform: scale(1.1);
 }
 
 .gp-star-button {
@@ -802,7 +918,7 @@ body {
 }
 
 .gp-form-textarea {
-    min-height: 300px;
+    min-height: 200px;
     resize: vertical;
     height: auto;
 }

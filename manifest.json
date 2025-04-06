@@ -3,12 +3,19 @@
   "name": "AI Prompt Manager",
   "version": "0.1.0",
   "description": "Enhance your AI experience with custom prompts and categories.",
-  "permissions": ["storage"],
+  "permissions": ["storage", "identity", "tabs", "alarms"],
+  "background": {
+    "service_worker": "background.js"
+  },
   "host_permissions": [
+    "http://localhost:3000/*",
     "https://grok.com/*",
     "https://chatgpt.com/*",
     "https://claude.ai/*"
   ],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'; img-src 'self' data: https://*"
+  },
   "content_scripts": [{
     "matches": [
       "https://grok.com/*",

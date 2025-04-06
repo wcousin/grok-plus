@@ -2,6 +2,22 @@
 
 All notable changes to the Grok Plus Chrome extension will be documented in this file.
 
+## [0.1.2] - 2025-04-05
+
+### Fixed
+- Fixed premium upgrade flow not working correctly
+- Added proper error handling for license verification
+- Improved debug logging throughout the premium flow
+- Fixed service worker registration issues
+- Added proper success page after Stripe payment
+- Fixed background script syntax errors
+
+### Added
+- Hourly premium status verification
+- Improved premium status synchronization across tabs
+- Better error messages for failed upgrades
+- Detailed debug logging for troubleshooting
+
 ## [0.1.1] - 2025-03-31
 
 ### Fixed

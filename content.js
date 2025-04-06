@@ -1,5 +1,285 @@
+// Initialize premium status from storage
+chrome.storage.local.get('isPremium', ({ isPremium: storedPremium }) => {
+  window.isPremium = storedPremium || false;
+  updateUpgradeButton();
+});
+
+// Listen for premium status updates from background script
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message.type === 'PREMIUM_STATUS_UPDATED') {
+    console.log('[Debug] Received premium status update:', message.isPremium);
+    window.isPremium = message.isPremium;
+    updateUpgradeButton();
+    loadCategories(); // Refresh UI to reflect new limits
+    loadPrompts();
+  }
+});
+
+// Premium Service Implementation
+const PremiumService = {
+  API_BASE_URL: 'https://db5f-64-191-7-8.ngrok-free.app',
+
+  async init() {
+    const installationId = await this.getInstallationId();
+    const status = await this.checkPremiumStatus(installationId);
+    return status;
+  },
+
+  async getInstallationId() {
+    const { installationId } = await chrome.storage.local.get('installationId');
+    if (installationId) return installationId;
+
+    const newId = crypto.randomUUID();
+    await chrome.storage.local.set({ installationId: newId });
+    return newId;
+  },
+
+  async checkPremiumStatus() {
+    // Request background script to verify status
+    chrome.runtime.sendMessage({ type: 'CHECK_PREMIUM_STATUS' });
+    return window.isPremium;
+  },
+
+  async initiateUpgrade() {
+    try {
+      const installationId = await this.getInstallationId();
+      const response = await fetch(`${this.API_BASE_URL}/create-checkout-session`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ installationId })
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      if (!data.url) {
+        throw new Error('No checkout URL received from server');
+      }
+
+      const checkoutWindow = window.open(data.url, '_blank');
+      
+      // Listen for messages from the checkout window
+      window.addEventListener('message', async function(event) {
+        if (event.data.type === 'PAYMENT_SUCCESS') {
+          const sessionId = event.data.sessionId;
+          try {
+            const response = await fetch(`${PremiumService.API_BASE_URL}/get-license`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ sessionId })
+            });
+
+            if (!response.ok) {
+              throw new Error(`HTTP error! status: ${response.status}`);
+            }
+
+            const data = await response.json();
+            console.log('[Debug] Get license response:', data);
+            if (data.licenseKey) {
+              console.log('[Debug] Setting license key in storage');
+              await chrome.storage.local.set({ licenseKey: data.licenseKey });
+              
+              // Update premium status
+              window.isPremium = true;
+              console.log('[Debug] Set window.isPremium to:', window.isPremium);
+              
+              // Update UI
+              updateUpgradeButton();
+              
+              // Close the modal if it's open
+              const modal = document.querySelector('.gp-modal');
+              if (modal) {
+                modal.remove();
+                modalState.isOpen = false;
+              }
+              
+              // Show success message
+              alert('Upgrade successful! You now have access to all premium features.');
+              
+              // Refresh the categories and prompts to remove limits
+              await loadCategories();
+              await loadPrompts();
+            }
+          } catch (error) {
+            console.error('Error retrieving license:', error);
+            alert('Error completing upgrade. Please contact support.');
+          }
+        } else if (event.data.type === 'PAYMENT_CANCELLED') {
+          console.log('Payment was cancelled');
+        }
+      });
+    } catch (error) {
+      console.error('Error initiating upgrade:', error);
+      alert('Unable to start the upgrade process. Please try again later.');
+    }
+  },
+
+  enforceFreemiumLimits: {
+    async checkPromptLimit() {
+      if (window.isPremium) return true;
+
+      const { grokPlus = { prompts: [] } } = await chrome.storage.local.get('grokPlus');
+      const canAdd = grokPlus.prompts.length < 5;
+      if (!canAdd) {
+        alert('You have reached the maximum number of prompts (5) for the free plan. Please upgrade to Premium for unlimited prompts.');
+      }
+      return canAdd;
+    },
+
+    async checkCategoryLimit() {
+      if (window.isPremium) return true;
+
+      const { grokPlus = { categories: [] } } = await chrome.storage.local.get('grokPlus');
+      // Exclude 'uncategorized' from the count since it's the default
+      const customCategories = grokPlus.categories.filter(c => c.name !== 'uncategorized');
+      const canAdd = customCategories.length < 1; // Only 1 custom category allowed
+      if (!canAdd) {
+        alert('You have reached the maximum number of custom categories (1) for the free plan. Please upgrade to Premium for unlimited categories.');
+      }
+      return canAdd;
+    },
+
+    // All users can use these features
+    async canUseFavorites() {
+      return true;
+    },
+
+    async canViewHistory() {
+      return true;
+    },
+
+    async canCopyPrompt() {
+      return true;
+    }
+  }
+};
+
 // Global modal state
 let modalState = { isOpen: false };
+let isPremium = false;
+
+// Poll for license key after payment
+async function pollForLicenseKey(maxAttempts = 10) {
+  const { pendingUpgrade } = await chrome.storage.local.get('pendingUpgrade');
+  if (!pendingUpgrade) return;
+
+  let attempts = 0;
+  const pollInterval = setInterval(async () => {
+    try {
+      const response = await new Promise((resolve) => {
+        chrome.runtime.sendMessage(
+          { type: 'POLL_UPGRADE_STATUS', installationId: pendingUpgrade },
+          resolve
+        );
+      });
+
+      if (response.status === 'premium') {
+        clearInterval(pollInterval);
+        isPremium = true;
+        updateUpgradeButton();
+        alert('Thank you for upgrading to Premium! Your account has been activated.');
+        chrome.storage.local.remove('pendingUpgrade');
+      } else if (++attempts >= maxAttempts) {
+        clearInterval(pollInterval);
+        chrome.storage.local.remove('pendingUpgrade');
+      }
+    } catch (error) {
+      console.error('Error polling for license:', error);
+      if (++attempts >= maxAttempts) {
+        clearInterval(pollInterval);
+        chrome.storage.local.remove('pendingUpgrade');
+      }
+    }
+  }, 2000); // Poll every 2 seconds
+}
+
+// Initialize premium status and update UI
+PremiumService.init().then(status => {
+  window.isPremium = status;
+  updateUpgradeButton();
+  
+  // Start polling if there's a pending upgrade
+  chrome.storage.local.get('pendingUpgrade', ({ pendingUpgrade }) => {
+    if (pendingUpgrade && !window.isPremium) {
+      pollForLicenseKey();
+    }
+  });
+});
+
+// Listen for messages from background script
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message.type === 'START_UPGRADE_POLLING') {
+    pollForLicenseKey();
+  }
+});
+
+// Function to update premium status in UI
+function updateUpgradeButton() {
+  console.log('[Debug] Updating premium status, isPremium:', window.isPremium);
+  
+  // First, find any old-style premium icons and replace them with the new container
+  const oldIcons = document.querySelectorAll('img[src*="verified.png"], img[src*="verified_green.png"]');
+  oldIcons.forEach(icon => {
+    if (!icon.parentElement.classList.contains('gp-premium-status')) {
+      const container = document.createElement('div');
+      container.className = 'gp-premium-status';
+      container.style.display = 'inline-flex';
+      container.style.alignItems = 'center';
+      container.style.cursor = window.isPremium ? 'default' : 'pointer';
+      if (!window.isPremium) {
+        container.onclick = () => PremiumService.initiateUpgrade();
+      }
+      
+      const newIcon = document.createElement('img');
+      newIcon.className = 'gp-premium-icon';
+      newIcon.src = chrome.runtime.getURL(window.isPremium ? 'assets/verified_green.png' : 'assets/verified.png');
+      newIcon.style.width = '24px';
+      newIcon.style.height = '24px';
+      newIcon.style.verticalAlign = 'middle';
+      
+      const text = document.createElement('span');
+      text.style.marginLeft = '4px';
+      text.style.fontSize = '14px';
+      text.style.color = window.isPremium ? '#10b981' : '#666';
+      text.textContent = window.isPremium ? 'Verified' : 'Upgrade';
+      
+      container.appendChild(newIcon);
+      container.appendChild(text);
+      icon.parentElement.replaceChild(container, icon);
+    }
+  });
+  
+  // Then update all premium status containers
+  const premiumContainers = document.querySelectorAll('.gp-premium-status');
+  console.log('[Debug] Found premium containers:', premiumContainers.length);
+  
+  premiumContainers.forEach((container, index) => {
+    const icon = container.querySelector('.gp-premium-icon');
+    const text = container.querySelector('span');
+    
+    if (icon) {
+      const newSrc = chrome.runtime.getURL(window.isPremium ? 'assets/verified_green.png' : 'assets/verified.png');
+      console.log(`[Debug] Setting premium icon ${index} to:`, newSrc);
+      icon.src = newSrc;
+      icon.title = window.isPremium ? 'Premium Member' : 'Upgrade to Premium';
+    }
+    
+    if (text) {
+      text.textContent = window.isPremium ? 'Verified' : 'Upgrade';
+      text.style.color = window.isPremium ? '#10b981' : '#666';
+    }
+    
+    // Update container click behavior
+    container.style.cursor = window.isPremium ? 'default' : 'pointer';
+    container.onclick = window.isPremium ? null : () => PremiumService.initiateUpgrade();
+  });
+  
+  if (premiumContainers.length === 0) {
+    console.log('[Debug] Could not find any premium containers');
+  }
+}
 
 // Reopen modal if it was open before reload
 window.addEventListener('load', () => {
@@ -38,6 +318,10 @@ function createModal() {
         <div class="gp-modal-header">
           <div class="gp-modal-header-left">
             <h2>Edit Prompt</h2>
+            <div class="gp-premium-status" style="display: inline-flex; align-items: center; margin-left: 8px; cursor: ${window.isPremium ? 'default' : 'pointer'}" ${window.isPremium ? '' : 'onclick="PremiumService.initiateUpgrade()"'}>
+              <img class="gp-premium-icon" src="${chrome.runtime.getURL(window.isPremium ? 'assets/verified_green.png' : 'assets/verified.png')}" style="width: 24px; height: 24px; vertical-align: middle;">
+              <span style="margin-left: 4px; font-size: 14px; color: ${window.isPremium ? '#4CAF50' : '#666'};">${window.isPremium ? 'Verified' : 'Upgrade'}</span>
+            </div>
           </div>
           <div class="gp-modal-header-right">
             <button class="gp-button" id="gp-close-view-prompt-modal">
@@ -94,6 +378,12 @@ function createModal() {
           </div>
         </div>
         <div class="gp-top-nav-right">
+          <button class="gp-button gp-upgrade-button" title="Upgrade to Premium">
+            <div class="gp-premium-status" style="display: inline-flex; align-items: center; cursor: ${window.isPremium ? 'default' : 'pointer'}" ${window.isPremium ? '' : 'onclick="PremiumService.initiateUpgrade()"'}>
+              <img class="gp-premium-icon" src="${chrome.runtime.getURL(window.isPremium ? 'assets/verified_green.png' : 'assets/verified.png')}" style="width: 24px; height: 24px; vertical-align: middle;">
+              <span style="margin-left: 4px; font-size: 14px; color: ${window.isPremium ? '#10b981' : '#666'};">${window.isPremium ? 'Verified' : 'Upgrade'}</span>
+            </div>
+          </button>
           <button class="gp-button gp-settings-toggle">
             <img src="${chrome.runtime.getURL('assets/settings.png')}" style="width: 24px; height: 24px; vertical-align: middle;">
           </button>
@@ -332,6 +622,7 @@ function injectGrokPlusIcon() {
         return;
       }
       
+      // Create main icon container
       const iconContainer = document.createElement('div');
       iconContainer.className = 'gp-icon-container';
       iconContainer.style.position = 'fixed';
@@ -348,12 +639,8 @@ function injectGrokPlusIcon() {
       iconContainer.style.backgroundColor = '#4f46e5';
       iconContainer.style.boxShadow = '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)';
       iconContainer.style.transition = 'transform 0.2s ease-in-out';
-      iconContainer.addEventListener('mouseover', () => {
-        iconContainer.style.transform = 'scale(1.1)';
-      });
-      iconContainer.addEventListener('mouseout', () => {
-        iconContainer.style.transform = 'scale(1)';
-      });
+      iconContainer.addEventListener('mouseover', () => iconContainer.style.transform = 'scale(1.1)');
+      iconContainer.addEventListener('mouseout', () => iconContainer.style.transform = 'scale(1)');
 
       const icon = document.createElement('img');
       icon.className = 'gp-icon';
@@ -364,7 +651,7 @@ function injectGrokPlusIcon() {
       icon.style.pointerEvents = 'none'; // Prevent icon from capturing clicks
       iconContainer.appendChild(icon);
 
-      // Add to body
+      // Add container to body
       document.body.appendChild(iconContainer);
 
       console.log('Prompt Manager: Icon injected successfully!');
@@ -404,6 +691,16 @@ function showModal() {
 
 // Setup modal handlers
 function setupModalHandlers(modal) {
+  // Upgrade button handler
+  const upgradeButton = modal.querySelector('.gp-upgrade-button');
+  if (upgradeButton) {
+    upgradeButton.addEventListener('click', () => {
+      if (!isPremium) {
+        PremiumService.initiateUpgrade();
+      }
+    });
+  }
+
   const closeButton = modal.querySelector('#gp-close-modal');
   closeButton.addEventListener('click', () => {
     modalState.isOpen = false;
@@ -589,7 +886,7 @@ function setupCategoryFormHandlers(modal, isEditing = false, categoryToEdit = nu
   }
 
   // Set up form submission
-  categoryForm.addEventListener('submit', (e) => {
+  categoryForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     e.stopPropagation();
     const nameInput = modal.querySelector('#category-name');
@@ -611,16 +908,22 @@ function setupCategoryFormHandlers(modal, isEditing = false, categoryToEdit = nu
     console.log('Saving category:', { name, color });
 
     if (isEditing && categoryToEdit) {
-      updateCategory(categoryToEdit.name, { name, color });
+      await updateCategory(categoryToEdit.name, { name, color });
     } else {
-      saveCategory({ name, color });
+      await saveCategory({ name, color });
     }
     closeForm();
   });
 }
 
 // Save category
-function saveCategory(category) {
+async function saveCategory(category) {
+  // Check category limit before saving
+  const canAdd = await PremiumService.enforceFreemiumLimits.checkCategoryLimit();
+  if (!canAdd) {
+    return;
+  }
+
   chrome.storage.local.get(['grokPlus'], (result) => {
     const grokPlus = result.grokPlus || { categories: [], prompts: [] };
     if (!grokPlus.categories) grokPlus.categories = [];
@@ -889,7 +1192,7 @@ function setupPromptFormHandlers(modal) {
     }
   });
 
-  promptForm.addEventListener('submit', (e) => {
+  promptForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     e.stopPropagation();
     const title = modal.querySelector('#prompt-title').value;
@@ -897,62 +1200,126 @@ function setupPromptFormHandlers(modal) {
     const category = modal.querySelector('#prompt-category').value;
     const isFavorite = modal.querySelector('#prompt-favorite').checked;
 
-    savePrompt({ 
+    await savePrompt({ 
       name: title,
       content, 
       category, 
       isFavorite,
       lastViewed: new Date().toISOString()
-    }, () => {
-      // Close form and show grid after successful save
-      closeForm();
-      // Refresh the grid
-      document.querySelector('#gp-prompts-grid').style.display = 'grid';
-      loadPrompts();
-      // Refresh the prompts grid
-      loadPrompts();
     });
+
+    // Close form and show grid after successful save
+    closeForm();
+    // Refresh the grid
+    document.querySelector('#gp-prompts-grid').style.display = 'grid';
+    loadPrompts();
+    // Refresh the prompts grid
+    loadPrompts();
   });
 }
 
 // Save prompt
-function savePrompt(prompt, callback) {
-  chrome.storage.local.get(['grokPlus'], (result) => {
-    const grokPlus = result.grokPlus || { prompts: [], categories: [] };
-    if (!grokPlus.prompts) grokPlus.prompts = [];
-    
-    if (!grokPlus.categories.some(c => c.name === prompt.category) && prompt.category !== 'uncategorized') {
-      prompt.category = 'uncategorized';
-    }
+async function savePrompt(prompt) {
+  // Check prompt limit before saving
+  const canAdd = await PremiumService.enforceFreemiumLimits.checkPromptLimit();
+  if (!canAdd) {
+    return;
+  }
 
-    // Set timestamps if not present
-    if (!prompt.lastViewed) {
-      prompt.lastViewed = new Date().toISOString();
-    }
-    if (!prompt.createdDate) {
-      prompt.createdDate = new Date().toISOString();
-    }
+  return new Promise((resolve, reject) => {
+    chrome.storage.local.get(['grokPlus'], (result) => {
+      const grokPlus = result.grokPlus || { prompts: [], categories: [] };
+      if (!grokPlus.prompts) grokPlus.prompts = [];
+      
+      if (!grokPlus.categories.some(c => c.name === prompt.category) && prompt.category !== 'uncategorized') {
+        prompt.category = 'uncategorized';
+      }
 
-    // Check if prompt already exists
-    const existingPromptIndex = grokPlus.prompts.findIndex(p => 
-      p.createdDate === prompt.createdDate
-    );
+      // Set timestamps if not present
+      if (!prompt.lastViewed) {
+        prompt.lastViewed = new Date().toISOString();
+      }
+      if (!prompt.createdDate) {
+        prompt.createdDate = new Date().toISOString();
+      }
 
-    if (existingPromptIndex !== -1) {
-      // Update existing prompt
-      grokPlus.prompts[existingPromptIndex] = prompt;
-    } else {
-      // Add new prompt
-      grokPlus.prompts.push(prompt);
-    }
+      // Check if prompt already exists
+      const existingPromptIndex = grokPlus.prompts.findIndex(p => 
+        p.createdDate === prompt.createdDate
+      );
 
-    chrome.storage.local.set({ grokPlus }, () => {
-      console.log('Grok Plus: Prompt saved:', prompt);
-      loadPrompts();
-      if (callback) callback();
+      if (existingPromptIndex !== -1) {
+        // Update existing prompt
+        grokPlus.prompts[existingPromptIndex] = prompt;
+      } else {
+        // Add new prompt
+        grokPlus.prompts.push(prompt);
+      }
+
+      chrome.storage.local.set({ grokPlus }, () => {
+        console.log('Grok Plus: Prompt saved:', prompt);
+        loadPrompts();
+        resolve();
+      });
     });
   });
 }
+
+// Test functions
+const TestFunctions = {
+  _exposed: true, // Flag to indicate these functions are exposed
+
+  async addPrompt(title, content) {
+    return savePrompt({
+      name: title,
+      content: content,
+      category: 'uncategorized',
+      createdAt: new Date().toISOString(),
+      lastViewed: new Date().toISOString(),
+      favorite: false
+    });
+  },
+
+  async addCategory(name, color = '#000000') {
+    return saveCategory({
+      name: name,
+      color: color
+    });
+  },
+
+  async clearData() {
+    return new Promise((resolve) => {
+      chrome.storage.local.clear(() => {
+        console.log('All data cleared');
+        loadPrompts();
+        loadCategories();
+        resolve();
+      });
+    });
+  }
+};
+
+// Make test functions available via chrome.runtime.sendMessage
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message.type === 'RUN_TEST') {
+    const { action, args } = message;
+    if (TestFunctions[action]) {
+      TestFunctions[action](...args)
+        .then(() => {
+          console.log(`Test action '${action}' completed successfully`);
+          sendResponse({ success: true });
+        })
+        .catch(error => {
+          console.error(`Test action '${action}' failed:`, error);
+          sendResponse({ success: false, error: error.message });
+        });
+      return true; // Keep the message channel open for async response
+    } else {
+      console.error(`Unknown test action: ${action}`);
+      sendResponse({ success: false, error: 'Unknown action' });
+    }
+  }
+});
 
 // Load prompts
 function loadPrompts(searchTerm = '', category = null) {
@@ -1084,6 +1451,8 @@ function showViewPromptModal(prompt) {
 
 // Create prompt element
 function createPromptElement(prompt, index) {
+  const canCopy = isPremium || PremiumService.enforceFreemiumLimits.canCopyPrompt();
+  const canFavorite = isPremium || PremiumService.enforceFreemiumLimits.canUseFavorites();
   const element = document.createElement('div');
   element.className = 'gp-prompt-item';
   
@@ -1091,7 +1460,7 @@ function createPromptElement(prompt, index) {
   
   element.innerHTML = `
     <div class="gp-prompt-header">
-      <h3>${truncateText(prompt.name, 30)}</h3>
+      <h4>${truncateText(prompt.name, 30)}</h4>
       <button class="gp-button gp-star-button ${prompt.isFavorite ? 'active' : ''}">
         <img src="${chrome.runtime.getURL(`assets/${prompt.isFavorite ? 'star_yellow.png' : 'star.png'}`)}" class="star-icon" style="width: 24px; height: 24px; vertical-align: middle;">
       </button>
